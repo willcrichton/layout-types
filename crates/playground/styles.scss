@@ -1,0 +1,17 @@
+@font-face {
+  font-family: "Linux Libertine";
+  src: url("assets/LinLibertine_R.woff2");
+}
+
+text {
+  font-family: "Linux Libertine";
+}
+
+.renders {
+  display: flex;
+  gap: 20px;
+
+  .render {
+    border: 1px solid #ccc;
+  }
+}

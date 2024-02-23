@@ -1,0 +1,10 @@
+[package]
+name = "playground"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+yew = { version = "0.21.0", features = ["csr"] }
+layout = { path = "../layout" }
+log = "0.4.20"
+wasm-logger = "0.2.0"
