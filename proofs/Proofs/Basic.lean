@@ -1,9 +1,8 @@
--- import Mathlib.Tactic.LibrarySearch
 import Mathlib.Data.List.Basic
 import Mathlib.Data.Real.Basic
-import Mathlib.Tactic.Linarith.Frontend
 import Mathlib.Data.Fin.Basic
-import LeanCopilot
+import Mathlib.Tactic.Linarith.Frontend
+-- import LeanCopilot
 
 structure Interval where
   lo : ℝ
@@ -46,50 +45,62 @@ def layout_lines (lines : List Size) (font_size : ℝ) : List Box :=
     let pos := Vec2.mk 0 y
     Box.mk pos size
 
-theorem scaled_lt_preserves_le (n1 n2 : ℕ) (r : ℝ) (h_r : r ≥ 0) (h_n_le : n1 < n2) (h_x_le : x ≤ r)
+theorem scaled_lt_preserves_le {n1 n2 : ℕ} {x r : ℝ} (h_r : r ≥ 0) (h_n_le : n1 < n2) (h_x_le : x ≤ r)
   : n1 * r + x ≤ n2 * r := by
   have h : (↑n1 + (1 : ℝ)) ≤ ↑n2 := by norm_cast
   have : (↑n1 + 1) * r ≤ n2 * r := mul_le_mul_of_nonneg_right h h_r
   linarith
 
 theorem line_layout_no_overlap (lines : List Size) (font_size : ℝ)
-  (n1 n2 : Fin (layout_lines lines font_size).length)
+  (n1 n2 : Fin lines.length)
   (hneq : n1 ≠ n2) (hsize : ∀ (s : Size), s ∈ lines → s.h ≤ font_size) (hpos : font_size ≥ 0)
-  : ((layout_lines lines font_size).get n1).disjoint ((layout_lines lines font_size).get n2)
+  : ∃ boxes, boxes = layout_lines lines font_size ∧
+    ∃ (n1' n2' : Fin boxes.length), n1.val = n1'.val ∧ n2.val = n2'.val ∧
+    (boxes.get n1').disjoint (boxes.get n2')
   := by
-    have : lines.length = (layout_lines lines font_size).length := by simp [layout_lines]
-    let n1' : Fin lines.enum.length := Fin.mk n1.val (by simp [*])
-    let n2' : Fin lines.enum.length := Fin.mk n2.val (by simp [*])
+    -- Start by "calling" the function.
+    let boxes := layout_lines lines font_size; exists boxes; simp
+
+    -- Convert the indices n1/n2 into corresponding Fin types
+    -- for each intermediate list.
+    let n1_enum : Fin lines.enum.length := Fin.mk n1.val (by simp [*])
+    let n2_enum : Fin lines.enum.length := Fin.mk n2.val (by simp [*])
+    have : boxes.length = lines.length := by simp [layout_lines]
+    let n1' : Fin boxes.length := Fin.mk n1.val (by simp [*])
+    let n2' : Fin boxes.length := Fin.mk n2.val (by simp [*])
+    exists n1'; simp; exists n2'; simp
+
+    -- Reduce the proof term given the definitions of all relevant functions.
     simp [
       layout_lines,
-      lines.get_enum n1', lines.get_enum n2',
+      lines.get_enum n1_enum, lines.get_enum n2_enum,
       Box.disjoint, Interval.disjoint,
       Size.w, Size.h
     ]
 
-    let n1'' : Fin lines.length := Fin.mk n1.val (by simp [*])
-    let n2'' : Fin lines.length := Fin.mk n2.val (by simp [*])
-    have h_n1_le : (lines.get n1'').h ≤ font_size := by
-      have : lines.get n1'' ∈ lines := by simp [List.get_mem]
-      simp [*]
-    have h_n2_le : (lines.get n2'').h ≤ font_size := by
-      have : lines.get n2'' ∈ lines := by simp [List.get_mem]
-      simp [*]
+    -- Apply hsize to show each line's height is less than font_size.
+    have h_n1_le_font : (lines.get n1).h ≤ font_size :=
+      hsize (lines.get n1) (List.get_mem lines n1.val n1.isLt)
+    have h_n2_le_font : (lines.get n2).h ≤ font_size :=
+      hsize (lines.get n2) (List.get_mem lines n2.val n2.isLt)
 
+    -- We're going to show that the height ranges of the bboxes are disjoint.
     apply Or.inr
+
+    -- Either the first box is below the second, or vice versa.
     cases Nat.lt_or_ge n1 n2 with
     | inl h_lt =>
+      -- If n1 < n2..
       apply Or.inr
-      apply scaled_lt_preserves_le n1 n2 font_size hpos
-      norm_cast
-      exact h_n1_le
+      apply scaled_lt_preserves_le hpos h_lt h_n1_le_font
     | inr h_ge =>
-      apply Or.inl
-      apply scaled_lt_preserves_le n2 n1 font_size hpos
+      -- Else n2 ≤ n1..
       cases Nat.eq_or_lt_of_le h_ge with
       | inl h_eq =>
+        -- n1 = n2 is a contradiction
         have : n1 = n2 := by rw [Iff.mp (Fin.val_eq_val n2 n1) h_eq]
         contradiction
       | inr h_lt =>
-        norm_cast
-      exact h_n2_le
+        -- Then we show for n2 < n1
+        apply Or.inl
+        apply scaled_lt_preserves_le hpos h_lt h_n2_le_font
