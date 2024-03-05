@@ -1,13 +1,8 @@
 import Mathlib.Data.Real.Basic
+import Mathlib.Data.Real.NNReal
+import Mathlib.Tactic.Linarith.Frontend
 
-structure PosReal where
-  val : ℝ
-  isPos : val ≥ 0
-
-notation "ℝ⁺" => PosReal
-
-instance : Coe ℝ⁺ ℝ where
-  coe x := x.val
+notation "ℝ⁺" => NNReal
 
 structure Interval where
   lo : ℝ
@@ -21,24 +16,30 @@ structure Vec2 where
   y : ℝ
 
 structure Size where
-  size : Vec2
-  positive : size.x ≥ 0 ∧ size.y ≥ 0
-
-def Size.w (s : Size) : ℝ := s.size.x
-def Size.h (s : Size) : ℝ := s.size.y
+  w : ℝ⁺
+  h : ℝ⁺
 
 structure Box where
   pos : Vec2
   size : Size
 
-def Box.disjoint (b1 b2 : Box) : Prop :=
-  let b1w := Interval.mk b1.pos.x (b1.pos.x + b1.size.w)
-  let b1h := Interval.mk b1.pos.y (b1.pos.y + b1.size.h)
-  let b2w := Interval.mk b2.pos.x (b2.pos.x + b2.size.w)
-  let b2h := Interval.mk b2.pos.y (b2.pos.y + b2.size.h)
-  (b1w.disjoint b2w) ∨ (b1h.disjoint b2h)
+def Box.x_interval (b : Box) := Interval.mk b.pos.x (b.pos.x + b.size.w)
+def Box.y_interval (b : Box) := Interval.mk b.pos.y (b.pos.y + b.size.h)
+
+def Box.disjoint (b1 b2 : Box) :=
+  (b1.x_interval.disjoint b2.x_interval) ∨
+  (b1.y_interval.disjoint b2.y_interval)
 
 structure Para where
   contents : String
   font_size : ℝ⁺
   line_height : ℝ⁺
+
+inductive Block where
+  | para (p : Para)
+
+structure Document where
+  blocks : List Block
+
+def x := Fin 3
+def Foo (n : ℕ) := { k : ℕ // k < n }
