@@ -16,11 +16,11 @@ def vert_layout_scaled (sizes : List Size) (scale : ℝ⁺) : List Box :=
   let sizes_at_y := sizes.enum.map λ (idx, size) => (size, idx * scale)
   vert_layout sizes_at_y
 
-def scan_sum (ns : List ℝ⁺) : List ℝ⁺ :=
+def prefix_sums {α} [Zero α] [Add α] (ns : List α) : List α :=
   (List.range ns.length).map λ i => (ns.take i).sum
 
 def vert_layout_fluid (sizes : List Size) : List Box :=
-  let ys := scan_sum (sizes.map Size.h)
+  let ys := prefix_sums (sizes.map Size.h)
   let sizes_at_y := sizes.zip (ys.map Coe.coe)
   vert_layout sizes_at_y
 

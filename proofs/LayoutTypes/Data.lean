@@ -1,6 +1,4 @@
-import Mathlib.Data.Real.Basic
 import Mathlib.Data.Real.NNReal
-import Mathlib.Tactic.Linarith.Frontend
 
 notation "ℝ⁺" => NNReal
 
@@ -30,6 +28,25 @@ def Box.disjoint (b1 b2 : Box) :=
   (b1.x_interval.disjoint b2.x_interval) ∨
   (b1.y_interval.disjoint b2.y_interval)
 
+structure BoxGroup (α : Type) where
+  box : Box
+  children : List α
+
+inductive Element
+  | atom (b : Box)
+  | group (g : BoxGroup Element)
+
+-- TODO: PICK BACK UP FROM HERE
+-- . refactor layout algorithms to return Elements instead of Boxes
+-- . figure out exactly how to handle relative coordinates when wrapping elements into Groups
+-- . implement fluid layout for blocks
+-- . prove the whole thing correct
+-- . replace the Interval structure with one of the mathlib intervals??
+
+def Element.box
+  | atom b => b
+  | group g => g.box
+
 structure Para where
   contents : String
   font_size : ℝ⁺
@@ -40,6 +57,3 @@ inductive Block where
 
 structure Document where
   blocks : List Block
-
-def x := Fin 3
-def Foo (n : ℕ) := { k : ℕ // k < n }

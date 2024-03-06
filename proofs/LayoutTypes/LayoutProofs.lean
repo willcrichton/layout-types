@@ -80,10 +80,9 @@ theorem vert_layout_fluid_disjoint (sizes : List Size)
   := by
   simp [vert_layout_fluid]
   apply vert_layout_disjoint
-  simp [height_intervals, scan_sum, List.zip, List.map_zipWith, List.zipWith_map_right]
-  simp [intervals_disjoint, Interval.disjoint, List.get_zipWith]
-  intros i1 i2 h_lt; apply Or.intro_right
-  have : i1.val < i2.val := h_lt
+  simp [height_intervals, prefix_sums, List.zip, List.map_zipWith, List.zipWith_map_right]
+  simp [intervals_disjoint, Interval.disjoint]
+  intros i1 i2 h_lt; apply Or.intro_right; simp [Coe.coe]; norm_cast
 
   let heights := sizes.map Size.h
   let intervals := List.zipWith (fun s i =>
@@ -96,17 +95,13 @@ theorem vert_layout_fluid_disjoint (sizes : List Size)
     have : intervals.length = sizes.length := by simp
     linarith [i1.isLt]
 
-  simp [Coe.coe]; norm_cast
-
   have h_take_i1_eq := heights.sum_take_succ i1 (by simp [*])
-
   simp at h_take_i1_eq
   rw [←h_take_i1_eq]
 
   apply heights.monotone_sum_take
   have := Iff.mp Fin.lt_iff_val_lt_val h_lt
   linarith
-
 
 -- theorem Layout.para_disjoint (l : Layout) (p : Para)
 --   (h_height_ge_font : (p.line_height : ℝ) ≥ p.font_size)
