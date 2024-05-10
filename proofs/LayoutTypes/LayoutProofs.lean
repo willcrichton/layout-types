@@ -1,114 +1,310 @@
 import Mathlib.Data.List.Basic
 import Mathlib.Data.List.Zip
-import Mathlib.Data.List.BigOperators.Defs
+import Mathlib.Algebra.BigOperators.Basic
 import Mathlib.Data.Real.Basic
 import Mathlib.Data.Fin.Basic
 import Mathlib.Tactic.Linarith.Frontend
 import Mathlib.Tactic.LiftLets
--- import LeanCopilot
+import Mathlib.Tactic.FinCases
 
-import «LayoutTypes».Data
+import «LayoutTypes».Document
+import «LayoutTypes».DocumentProofs
+import «LayoutTypes».Space
+import «LayoutTypes».SpaceProofs
 import «LayoutTypes».Layout
+import «LayoutTypes».UtilsProofs
 
-lemma scaled_lt_preserves_le {n1 n2 : ℕ} {x: ℝ} {r : ℝ⁺}
-  (h_n_le : n1 < n2) (h_x_le : r ≥ x)
-  : n1 * r  + x ≤ n2 * r := by
-  have h : (↑n1 + (1 : ℝ)) ≤ ↑n2 := by norm_cast
-  have : (↑n1 + 1) * (r : ℝ) ≤ n2 * r := mul_le_mul_of_nonneg_right h (by simp)
+def total_width (els : List Element) : ℚ⁺ :=
+  els.map (·.box.size.w) |>.sum
+
+lemma lt_commutes {a b c : ℚ} (_ : a + b ≤ c) : b + a ≤ c := by
   linarith
 
-def boxes_disjoint (boxes : List Box) :=
-  ∀ (n1 n2 : Fin boxes.length), n1 < n2 → (boxes.get n1).disjoint (boxes.get n2)
+section WrapLines
 
-def intervals_disjoint (intervals : List Interval) :=
-  ∀ (i1 i2 : Fin intervals.length), i1 < i2 → (intervals.get i1).disjoint (intervals.get i2)
+variable (width : ℚ⁺) (el : Element) (els : List Element) (cur : List Element) (line : List Element) (x : ℚ⁺)
 
-def height_intervals (sizes_at_y : List (Size × ℝ)) :=
-  sizes_at_y.map λ (size, y) => Interval.mk y (y + size.h)
-
-theorem vert_layout_disjoint {sizes_at_y : List (Size × ℝ)}
-  (h_intv_disjoint : intervals_disjoint (height_intervals sizes_at_y))
-  : boxes_disjoint (vert_layout sizes_at_y)
+lemma wrap_lines_greedy.aux.preserves_width
+  (h_cur_bounded : total_width cur ≤ width)
+  : ∀ line ∈ wrap_lines_greedy.aux width els cur (total_width cur), total_width line ≤ width
   := by
-  let boxes := vert_layout sizes_at_y
-  unfold boxes_disjoint; intros n1 n2 hneq
-  simp [vert_layout, Box.disjoint]; apply Or.inr
+  intro line h_in
+  induction els generalizing cur
+  all_goals simp [wrap_lines_greedy.aux] at h_in
+  case nil => rw [h_in]; assumption
+  case cons el els ih =>
+    apply Or.elim (Classical.em (width < total_width cur + el.box.size.w))
+    case left =>
+      intro h; simp [h] at h_in
+      cases h_in
+      case inl h' => rw [h']; assumption
+      case inr h' => apply ih []; simp [total_width]; assumption
+    case right =>
+      intro h; simp [h] at h_in
+      apply ih (el :: cur)
+      simp [total_width] at *; rw [←total_width] at *
+      apply lt_commutes h
+      simp [total_width] at *; rw [←total_width] at *
+      rw [(_ : total_width cur + el.box.size.w = el.box.size.w + total_width cur)] at h_in
+      assumption
+      apply add_comm
 
-  have : sizes_at_y.length = boxes.length := by simp [vert_layout]
-  let n1' : Fin sizes_at_y.length := ⟨n1, by simp [*]⟩
-  let n2' : Fin sizes_at_y.length := ⟨n2, by simp [*]⟩
-  let t1 := sizes_at_y.get n1'; let size1 := t1.1; let y1 := t1.2
-  let t2 := sizes_at_y.get n2'; let size2 := t2.1; let y2 := t2.2
-  let i1 := Interval.mk y1 (y1 + size1.h)
-  let i2 := Interval.mk y2 (y2 + size2.h)
-  show i1.disjoint i2
-
-  let intvls := height_intervals sizes_at_y
-  let n1'' : Fin intvls.length := ⟨n1, by simp [*, height_intervals]⟩
-  let n2'' : Fin intvls.length := ⟨n2, by simp [*, height_intervals]⟩
-  have h1 : i1 = intvls.get n1''  := by simp [*, height_intervals]
-  have h2 : i2 = intvls.get n2'' := by simp [*, height_intervals]
-  rw [h1, h2]
-  exact h_intv_disjoint n1'' n2'' (by simp [*])
-
-theorem vert_layout_scaled_disjoint (sizes : List Size) (scale : ℝ⁺)
-  (h_size_bounded : ∀ s ∈ sizes, scale ≥ s.h)
-  : boxes_disjoint (vert_layout_scaled sizes scale)
+theorem wrap_lines_greedy.preserves_width
+  : ∀ line ∈ wrap_lines_greedy els width, (line.map (·.box.size.w)).sum ≤ width
   := by
-  simp [vert_layout_scaled]
-  apply vert_layout_disjoint
-  simp [intervals_disjoint]
-  intros n1 n2 h_lt
+  intro line h_in
+  apply wrap_lines_greedy.aux.preserves_width width els []
+  simp [total_width]
+  apply h_in
 
-  let sizes_at_y := sizes.enum.map λ (idx, size) => (size, (idx : ℝ) * scale)
-  have : sizes.length = (height_intervals sizes_at_y).length := by simp [*, height_intervals]
-  let n1_enum : Fin sizes.enum.length := ⟨n1, by simp [*]⟩
-  let n2_enum : Fin sizes.enum.length := ⟨n2, by simp [*]⟩
-  simp [
-    intervals_disjoint, height_intervals, Interval.disjoint, Size.h,
-    sizes.get_enum n1_enum, sizes.get_enum n2_enum
-  ]
-  let n1_sizes : Fin sizes.length := ⟨n1, by simp [*]⟩
-  apply Or.inr
-  apply scaled_lt_preserves_le h_lt
-  apply h_size_bounded; apply List.get_mem sizes n1_sizes
 
-theorem foo {a b c d : ℝ} (h1 : a ≤ b) (h2 : b + c ≤ d) : a + c ≤ d := by linarith
-
-theorem vert_layout_fluid_disjoint (sizes : List Size)
-  : boxes_disjoint (vert_layout_fluid sizes)
+theorem wrap_lines_greedy.aux.mem
+  (h_line_in : line ∈ wrap_lines_greedy.aux width els cur x)
+  (h_el_in : el ∈ line)
+  : el ∈ els ∨ el ∈ cur
   := by
-  simp [vert_layout_fluid]
-  apply vert_layout_disjoint
-  simp [height_intervals, prefix_sums, List.zip, List.map_zipWith, List.zipWith_map_right]
-  simp [intervals_disjoint, Interval.disjoint]
-  intros i1 i2 h_lt; apply Or.intro_right; simp [Coe.coe]; norm_cast
+  induction els generalizing cur x
+  all_goals simp [aux] at h_line_in
+  case nil =>
+    rw [←h_line_in]
+    apply Or.intro_right _ h_el_in
+  case cons head tail ih =>
+    cases Classical.em (width < x + head.box.size.w)
+    case inl h =>
+      simp [h] at h_line_in
+      cases h_line_in
+      case inl h =>
+        rw [←h]
+        apply Or.intro_right _ h_el_in
+      case inr h =>
+        have := ih [] 0 h
+        simp at this
+        apply Or.intro_left _ (List.mem_cons_of_mem head this)
+    case inr h =>
+      simp [h] at h_line_in
+      cases ih (head :: cur) (x + head.box.size.w) h_line_in
+      case inl h =>
+        apply Or.intro_left _ (List.mem_cons_of_mem head h)
+      case inr h =>
+        cases List.mem_cons.mp h
+        case inl h =>
+          rw [h]
+          apply Or.intro_left _ (List.mem_cons_self head tail)
+        case inr h =>
+          apply Or.intro_right _ h
 
-  let heights := sizes.map Size.h
-  let intervals := List.zipWith (fun s i =>
-    Interval.mk
-      (Coe.coe (heights.take i).sum)
-      (Coe.coe (heights.take i).sum + s.h))
-    sizes (List.range sizes.length)
+theorem wrap_lines_greedy.mem
+  (h_line_in : line ∈ wrap_lines_greedy els width)
+  (h_el_in : el ∈ line)
+  : el ∈ els
+  := by
+  simp [wrap_lines_greedy] at h_line_in
+  have := wrap_lines_greedy.aux.mem width el els [] line 0 h_line_in h_el_in
+  simp at this
+  assumption
 
-  have : i1 < sizes.length := by
-    have : intervals.length = sizes.length := by simp
-    linarith [i1.isLt]
+theorem wrap_lines_greedy.preserves_disjoint
+  (h_els_disjoint : ∀ el ∈ els, el.inner_disjoint)
+  : ∀ line ∈ wrap_lines_greedy els width, ∀ el ∈ line, el.inner_disjoint
+  := by
+  intro line h_line_in el h_el_in
+  apply h_els_disjoint
+  exact wrap_lines_greedy.mem width el els line h_line_in h_el_in
 
-  have h_take_i1_eq := heights.sum_take_succ i1 (by simp [*])
-  simp at h_take_i1_eq
-  rw [←h_take_i1_eq]
+end WrapLines
 
-  apply heights.monotone_sum_take
-  have := Iff.mp Fin.lt_iff_val_lt_val h_lt
+theorem set_pos_inner_disjoint (e : Element) (p : Pos) (h_disj : e.inner_disjoint)
+  : (e.setPos p).inner_disjoint
+  := by
+  cases e
+  case text t =>
+    obtain ⟨box, s, style⟩ := t
+    simp [Element.setPos, Text.setPos, Element.inner_disjoint]
+  case frame f =>
+    obtain ⟨origin, els⟩ := f
+    simp [Element.setPos, Frame.setPos, Element.inner_disjoint] at *
+    assumption
+
+
+section LayoutMonotone
+
+variable (f : AccUpdate)
+  (dim : Fin 2)
+  (els : List Element)
+  (p : Pos)
+  (dim : Fin 2)
+  (h_f_mono : layout_monotone f dim)
+
+def layout_monotone : Prop :=
+  ∀ (el : Element) (p : Pos),
+  (el.setPos p).box.hi.nth dim < (f el p).nth dim
+
+theorem layout_list_acc.aux_monotone
+  : ∀ el ∈ aux f els p, p.nth dim ≤ el.box.lo.nth dim
+  := by
+  intro el h_in
+  induction els generalizing p
+  case nil => simp [aux] at h_in
+  case cons el els ih =>
+    simp [aux] at h_in
+    cases h_in
+    case inl h => simp [Element.set_pos_changes_pos, h]
+    case inr h =>
+      apply LE.le.trans _ (ih (f el p) h)
+      apply LE.le.trans _ (le_of_lt (h_f_mono el p))
+      simp [Element.set_pos_changes_pos]
+      cases dim.two_eq_or
+      case inl h' => simp [h', Prod.nth]
+      case inr h' => simp [h' ,Prod.nth]
+
+theorem layout_list_acc.aux_disjoint
+  : elements_disjoint (layout_list_acc.aux f els p)
+  := by
+  induction els generalizing p
+  all_goals simp [layout_list_acc.aux, elements_disjoint] at *
+  case cons el els ih =>
+    apply And.intro
+    case left =>
+      intro el' h_in
+      simp [Element.disjoint, Element.set_pos_changes_pos]
+      apply Box.disjoint_if_dim_disjoint _ _ dim
+      simp
+      have h_f_mono' := h_f_mono el p
+      have h_aux_mono := layout_list_acc.aux_monotone f els (f el p) dim h_f_mono
+      cases dim.two_eq_or
+      all_goals {
+        simp [Prod.nth, Element.set_pos_changes_pos, *] at *
+        apply lt_of_lt_of_le h_f_mono'
+        apply h_aux_mono
+        assumption
+      }
+    case right =>
+      exact ih (f el p).1 (f el p).2
+
+theorem layout_list_acc.aux_inner_disjoint
+  (h_disjoint : ∀ el ∈ els, el.inner_disjoint)
+  : ∀ el ∈ layout_list_acc.aux f els p, el.inner_disjoint
+  := by
+  induction els generalizing p
+  case nil => simp [aux]
+  case cons el els ih =>
+      simp [aux]
+      apply And.intro
+      case left =>
+        have := els.mem_cons_self el
+        apply Element.set_pos_preserves_inner_disjoint _ _ (h_disjoint el (els.mem_cons_self el))
+      case right =>
+        intro el' h_in
+        exact ih (f el p) (forall_prop_of_tail h_disjoint) el' h_in
+
+theorem layout_list_acc.disjoint
+  (h_disjoint : ∀ el ∈ els, el.inner_disjoint)
+  : (layout_list_acc f els).inner_disjoint
+  := by
+  simp [Element.inner_disjoint, layout_list_acc]
+  apply And.intro
+  case left => exact layout_list_acc.aux_disjoint f els 0 dim h_f_mono
+  case right => exact layout_list_acc.aux_inner_disjoint f els 0 h_disjoint
+
+theorem left_align.monotone : layout_monotone left_align 0 := by
+  simp [layout_monotone, left_align, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
+  intro el x
   linarith
 
--- theorem Layout.para_disjoint (l : Layout) (p : Para)
---   (h_height_ge_font : (p.line_height : ℝ) ≥ p.font_size)
---   : boxes_disjoint (l.para p)
---   := by
---   simp [Layout.para]
---   let wrapped : WrappedLines p.font_size := l.wrapper p.contents p.font_size
---   have height_bounded : ∀ s ∈ wrapped.lines, (p.line_height : ℝ) ≥ s.h := by
---     intros s s_in; have := wrapped.height_bounded s s_in; linarith
---   exact vert_layout_scaled_disjoint height_bounded
+theorem vert_stack.monotone : layout_monotone vert_stack 1 := by
+  simp [layout_monotone, vert_stack, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
+  intro el y
+  linarith
+
+def layout_left_align.disjoint :=
+  layout_list_acc.disjoint left_align els 0 left_align.monotone
+
+def layout_vert_stack.disjoint :=
+  layout_list_acc.disjoint vert_stack els 1 vert_stack.monotone
+
+end LayoutMonotone
+
+
+section InlineLayoutDisjoint
+
+variable (icx : InlineLayoutCtx) (is : List Inline) (i : Inline)
+
+theorem InlineLayoutCtx.collect_inline_disjoint
+  : ∀ el ∈ icx.collect_inline i, el.inner_disjoint
+  := by
+  intro el h_in
+  induction i generalizing icx
+  case text =>
+    simp [collect_inline] at h_in
+    rw [h_in]
+    simp [Element.inner_disjoint]
+  case bold is ih =>
+    simp [collect_inline, collect_inline_seq] at h_in
+    obtain ⟨i, h⟩ := h_in
+    exact ih i h.left {icx with bold := true} h.right
+
+theorem InlineLayoutCtx.collect_inline_seq_disjoint
+  : ∀ el ∈ icx.collect_inline_seq is, el.inner_disjoint
+  := by
+  intro el h_in
+  simp [collect_inline_seq] at h_in
+  obtain ⟨i, h⟩ := h_in
+  exact icx.collect_inline_disjoint i el h.right
+
+theorem InlineLayoutCtx.layout_lines_disjoint
+  : (icx.layout_lines is).inner_disjoint
+  := by
+  simp [layout_lines]
+  apply layout_vert_stack.disjoint
+  intro el h_in
+  simp at h_in
+  obtain ⟨line, h⟩ := h_in
+  rw [←h.right]
+  apply layout_left_align.disjoint
+  intro el h_in
+  apply wrap_lines_greedy.preserves_disjoint icx.blockWidth (icx.collect_inline_seq is) _ line h.left
+  assumption
+  apply icx.collect_inline_seq_disjoint
+
+end InlineLayoutDisjoint
+
+section GlobalLayoutDisjoint
+
+variable (gcx : GlobalLayoutCtx) (p : Para) (b : Block) (bs : List Block) (d : Document)
+  (shape : TextShaper)
+
+theorem GlobalLayoutCtx.layout_para_disjoint
+  : (gcx.layout_para p).inner_disjoint
+  := by
+  unfold layout_para; lift_lets; intro icx
+  apply icx.layout_lines_disjoint
+
+theorem GlobalLayoutCtx.layout_block_disjoint
+  : (gcx.layout_block b).inner_disjoint
+  := by
+  cases b
+  case para => apply gcx.layout_para_disjoint
+
+theorem GlobalLayoutCtx.layout_block_seq_disjoint
+  : (gcx.layout_block_seq bs).inner_disjoint
+  := by
+  simp [layout_block_seq]
+  apply layout_vert_stack.disjoint
+  intro el h_in
+  simp at h_in; obtain ⟨el, h⟩ := h_in
+  rw [←h.right]
+  apply gcx.layout_block_disjoint
+
+theorem GlobalLayoutCtx.layout_document_disjoint
+  : (gcx.layout_document d).inner_disjoint
+  := by
+  simp [layout_document]
+  apply gcx.layout_block_seq_disjoint
+
+theorem Document.layout_disjoint
+  : (d.layout shape).inner_disjoint
+  := by
+  unfold layout; lift_lets; intro gcx
+  apply gcx.layout_document_disjoint
+
+end GlobalLayoutDisjoint
