@@ -1,16 +1,40 @@
-import «LayoutTypes».Space
+/- Types and type-checking of the document language -/
 
--- structure Tcx
+import «LayoutTypes».Expr
 
--- def Tcx.para (_ : Tcx) (p : Para) : Prop :=
---   (p.line_height : ℚ) ≥ p.font_size
+inductive Ty where
+  | string
+  | number
+  | inline
+  | block
+  | document
+deriving DecidableEq
 
--- def Tcx.block (Γ : Tcx) (b : Block) : Prop :=
---   match b with
---   | Block.para p => Γ.para p
+structure Tcx
 
--- def Tcx.blocks (Γ : Tcx) (bs : List Block) : Prop :=
---   ∀ b ∈ bs, Γ.block b
-
--- def Tcx.document (Γ : Tcx) (d : Document) : Prop :=
---   Γ.blocks d.blocks
+def Tcx.check (Γ : Tcx) (e : Expr) : Option Ty :=
+  match e with
+  | .string _ => some .string
+  | .number _ => some .number
+  | .text _ => some .inline
+  | .bold inls => do
+    let tys ← inls.attach.mapM (Γ.check ·.val)
+    if tys.all (· = .inline) then some .inline
+    else none
+  | .para inls fontSize lineHeight => do
+    let inlTys ← inls.attach.mapM (Γ.check ·.val)
+    let fontSizeTy ← Γ.check fontSize
+    let lineHeightTy ← Γ.check lineHeight
+    if inlTys.all (· = .inline) ∧
+      fontSizeTy = .number ∧
+      lineHeightTy = .number then
+      some .block
+    else none
+  | .document bs => do
+    let bTys ← bs.attach.mapM (Γ.check ·.val)
+    if bTys.all (· = .block) then some .document
+    else none
+decreasing_by
+  try any_goals { simp_wf; decreasing_trivial }
+  try any_goals { rename _ => x; have := x.property; simp_wf; decreasing_trivial }
+  simp_wf

@@ -2,14 +2,14 @@ import Lake
 open Lake DSL
 
 package «layout-types» where
-  -- moreLinkArgs := #["-L./.lake/packages/LeanCopilot/.lake/build/lib", "-lctranslate2"]
-  -- add package configuration options here
 
 lean_lib «LayoutTypes» where
-  -- add library configuration options here
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.8.0-rc1"
+  "https://github.com/leanprover-community/mathlib4" @ "3502115bbf882ed91452052c41607a3e5139e1e1"
+
+require proofwidgets from git
+  "https://github.com/leanprover-community/ProofWidgets4" @ "v0.0.36"
 
 @[default_target]
 lean_exe «layout-types» where

@@ -1,14 +1,20 @@
-import «LayoutTypes».Space
 import «LayoutTypes».Types
 import «LayoutTypes».Layout
 import «LayoutTypes».LayoutProofs
 
--- theorem para_layout_safe (Γ : Tcx) (l : Layout) (p : Para) (h : Γ.para p)
---   : ∃ boxes, boxes = l.para p ∧ boxes_disjoint boxes
-  -- := l.para_disjoint p h
+theorem Tcx.wf_if_check (Γ : Tcx) (e : Expr)
+  (h : Γ.check e = Ty.document)
+  : ∃ d, e.toDocument = some d ∧
+    d.wf
+  := by
+  sorry
 
--- theorem block_layou
-
--- theorem disjoint_safety (l : Layout) (p : Para)
---   : tc_para p → ∃ boxes, boxes = l.para p ∧ boxes_disjoint boxes
---   := by
+theorem Tcx.disjoint_if_check (Γ : Tcx) (e : Expr)
+  (shaper : TextShaper)
+  (h : Γ.check e = Ty.document)
+  : ∃ d, e.toDocument = some d ∧
+    (d.layout shaper).inner_disjoint
+  := by
+  obtain ⟨d, h_wf⟩ := Γ.wf_if_check e h
+  exists d
+  exact And.intro h_wf.left (d.layout_disjoint shaper h_wf.right)

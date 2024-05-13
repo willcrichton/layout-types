@@ -1,6 +1,43 @@
+/- Source and target document data structures. -/
+
 import «LayoutTypes».Space
+import «LayoutTypes».Utils
+import ProofWidgets.Data.Html
+import ProofWidgets.Component.HtmlDisplay
+
+
+/- Source documents. -/
+
+inductive Inline where
+  | text (s : String)
+  | bold (inls: List Inline)
+
+structure Para where
+  inls : List Inline
+  fontSize : ℚ⁺
+  lineHeight : ℚ⁺
+
+def Para.wf (p : Para) : Prop :=
+  p.fontSize ≤ p.lineHeight
+
+inductive Block where
+  | para (p : Para)
+
+def Block.wf (b : Block) : Prop :=
+  match b with
+  | para p => p.wf
+
+structure Document where
+  blocks : List Block
+
+def Document.wf (d : Document) : Prop :=
+  ∀ b ∈ d.blocks, b.wf
+
+
+/- Target documents. -/
 
 structure Style where
+  fontSize : ℚ
   bold : Bool
 
 mutual
@@ -18,11 +55,16 @@ mutual
     | frame : Frame → Element
 end
 
+
+/- Methods on the target document domain. -/
+
 mutual
   def Frame.box (frame : Frame) : Box :=
     let ⟨origin, els⟩ := frame
     let boxes := els.attach.map λ el : { x // x ∈ els } => Element.box el.val
-    let cover := boxCover boxes
+    let cover := match boxes with
+      | [] => 0
+      | b :: bs => boxCover b bs
     cover.offset origin
   decreasing_by have := el.prop; simp_wf; decreasing_trivial
 
@@ -40,7 +82,9 @@ mutual
 
   def Frame.setPos (frame : Frame) (pos : Pos) : Frame :=
     let ⟨_, els⟩ := frame
-    let overflow := els.map (·.pos) |>.foldl (· ⊓ ·) 0
+    let overflow := match els with
+      | [] => 0
+      | el :: els => els.map (·.pos) |>.foldl (· ⊓ ·) el.pos
     ⟨pos - overflow, els⟩
 
   def Element.setPos (e : Element) (pos : Pos) : Element := match e with
@@ -59,17 +103,43 @@ def Element.inner_disjoint (e : Element) : Prop := match e with
   | Element.frame (Frame.mk _ els) =>
     elements_disjoint els ∧ ∀ el ∈ els, el.inner_disjoint
 
-inductive Inline where
-  | text (s : String)
-  | bold (inls: List Inline)
 
-structure Para where
-  inls : List Inline
-  fontSize : ℚ⁺
-  lineHeight : ℚ⁺
+/- Utility widget for looking at elements in the proof view. -/
 
-inductive Block where
-  | para (p : Para)
+def Element.to_svg_parts (e : Element) : ProofWidgets.Html :=
+  open scoped ProofWidgets.Jsx in
+  match e with
+  | text t =>
+    let ⟨box, s, style⟩ := t;
+    let fontSize := toString style.fontSize;
+    let fontWeight := if style.bold then "bold" else "normal";
+    <text
+      x={toString box.lo.x.toFloat}
+      y={toString box.lo.y.toFloat}
+      style={json% {
+        fontSize: $(fontSize),
+        fontWeight: $(fontWeight),
+        whiteSpace: "pre"
+      }}
+    >
+      {.text s}
+    </text>
+  | frame f =>
+    let ⟨origin, els⟩ := f;
+    let elSvgs := els.attach.map (λ el : {x // x ∈ els} => el.val.to_svg_parts) |>.toArray;
+    let transform := s! "translate({origin.x.toFloat}, {origin.y.toFloat})";
+    <g transform={transform} >{...elSvgs}</g>
+decreasing_by have := el.prop; simp_wf; decreasing_trivial
 
-structure Document where
-  blocks : List Block
+def Element.to_svg (e : Element) (width height : ℚ) : ProofWidgets.Html :=
+  open scoped ProofWidgets.Jsx in
+  <svg xmlns="http://www.w3.org/2000/svg"
+      version="1.1"
+      width={toString width}
+      height={toString height}
+      style={json% {
+        dominantBaseline: "hanging",
+        fontFamily: "Inconsolata"
+      }}>
+    {e.to_svg_parts}
+  </svg>
