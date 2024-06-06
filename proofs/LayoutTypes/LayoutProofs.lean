@@ -61,9 +61,9 @@ section WrapLines
 --   simp [total_width]
 --   apply h_in
 
-theorem wrap_lines_greedy.aux.mem
+theorem wrapLinesGreedy.aux.mem
   (width : ℚ⁺) (el : Element) (els : List Element) (cur : List Element) (line : List Element) (x : ℚ⁺)
-  (h_line_in : line ∈ wrap_lines_greedy.aux width els cur x)
+  (h_line_in : line ∈ wrapLinesGreedy.aux width els cur x)
   (h_el_in : el ∈ line)
   : el ∈ els ∨ el ∈ cur
   := by
@@ -95,100 +95,192 @@ theorem wrap_lines_greedy.aux.mem
         cases h
         all_goals simp [*]
 
-theorem wrap_lines_greedy.mem
+theorem wrapLinesGreedy.mem
   (width : ℚ⁺) (el : Element) (els : List Element) (line : List Element)
-  (h_line_in : line ∈ wrap_lines_greedy els width)
+  (h_line_in : line ∈ wrapLinesGreedy els width)
   (h_el_in : el ∈ line)
   : el ∈ els
   := by
-  simp [wrap_lines_greedy] at h_line_in
-  have := wrap_lines_greedy.aux.mem width el els [] line 0 h_line_in h_el_in
+  simp [wrapLinesGreedy] at h_line_in
+  have := wrapLinesGreedy.aux.mem width el els [] line 0 h_line_in h_el_in
   simp at this
   assumption
 
-theorem wrap_lines_greedy.preserves_disjoint
+theorem wrapLinesGreedy.preserves_disjoint
   (width : ℚ⁺) (els : List Element)
   (h_els_disjoint : ∀ el ∈ els, el.inner_disjoint)
-  : ∀ line ∈ wrap_lines_greedy els width, ∀ el ∈ line, el.inner_disjoint
+  : ∀ line ∈ wrapLinesGreedy els width, ∀ el ∈ line, el.inner_disjoint
   := by
   intro line h_line_in el h_el_in
   apply h_els_disjoint
-  exact wrap_lines_greedy.mem width el els line h_line_in h_el_in
+  exact wrapLinesGreedy.mem width el els line h_line_in h_el_in
 
 end WrapLines
 
-theorem set_pos_inner_disjoint (e : Element) (p : Pos) (h_disj : e.inner_disjoint)
-  : (e.setPos p).inner_disjoint
-  := by
-  cases e
-  case text t =>
-    obtain ⟨box, s, style⟩ := t
-    simp [Element.setPos, Text.setPos, Element.inner_disjoint]
-  case frame f =>
-    obtain ⟨origin, els⟩ := f
-    simp [Element.setPos, Frame.setPos, Element.inner_disjoint] at *
-    assumption
-
-
 section LayoutMonotone
 
-def layout_monotone (f : AccUpdate) (dim : Fin 2) (els : List Element) : Prop :=
-  ∀ el ∈ els, ∀ (p : Pos), (el.setPos p).box.hi.nth dim < (f el p).nth dim
+def valid_adjacent_fluid_els (el1 el2 : FluidEl) :=
+  0 ≤ el1.nextMargin + el2.prevMargin
 
-def layout_monotone.cons (el : Element) (els : List Element) (h : layout_monotone f dim (el :: els))
-  : layout_monotone f dim els := by
-  unfold layout_monotone at *
-  exact forall_prop_of_tail h
+def valid_fluid_els (els : List FluidEl) :=
+  List.Chain' valid_adjacent_fluid_els els
 
-theorem layout_list_acc.aux_monotone (f : AccUpdate) (dim : Fin 2) (els : List Element) (p : Pos)
-  (h_f_mono : layout_monotone f dim els)
-  : ∀ el ∈ aux f els p, p.nth dim ≤ el.box.lo.nth dim
-  := by
-  intro el h_in
-  induction els generalizing p
-  case nil => simp [aux] at h_in
-  case cons el' els ih =>
-    simp [aux] at h_in
-    cases h_in
-    case inl h => simp [Element.set_pos_changes_pos, h]
-    case inr h =>
-      have := ih (f el' p) (h_f_mono.cons _ els) h
-      apply LE.le.trans _ this
-      have := h_f_mono el' (by simp) p
-      simp [Element.set_pos_changes_pos] at this
-      apply LE.le.trans _ (le_of_lt this)
-      cases dim.two_eq_or
-      case inl h' => simp [h', Prod.nth]
-      case inr h' => simp [h' ,Prod.nth]
-
-theorem layout_list_acc.aux_disjoint (f : AccUpdate) (dim : Fin 2) (els : List Element) (p : Pos)
-  (h_f_mono : layout_monotone f dim els)
-  : elements_disjoint (layout_list_acc.aux f els p)
-  := by
-  induction els generalizing p
-  all_goals simp [layout_list_acc.aux, elements_disjoint] at *
+def valid_fluid_els.ge_zero (els : List FluidEl)
+  (h : ∀ el ∈ els, 0 ≤ el.prevMargin ∧ 0 ≤ el.nextMargin)
+  : valid_fluid_els els := by
+  induction els
+  case nil => trivial
   case cons el els ih =>
-    apply And.intro
-    case left =>
-      intro el' h_in
-      simp [Element.disjoint, Element.set_pos_changes_pos]
-      apply Box.disjoint_if_dim_disjoint _ _ dim
-      simp
-      have h_f_mono' := h_f_mono el (by simp) p
-      have h_aux_mono := layout_list_acc.aux_monotone f dim els (f el p) h_f_mono.cons
-      cases dim.two_eq_or
-      all_goals {
-        simp [Prod.nth, Element.set_pos_changes_pos, *] at *
-        apply lt_of_lt_of_le h_f_mono'
-        apply h_aux_mono
-        assumption
-      }
-    case right =>
-      exact ih (f el p).1 (f el p).2 h_f_mono.cons
+    have ih' := ih (forall_prop_of_tail h)
+    apply List.Chain'.cons' ih'
+    intro el' h_in
+    cases els
+    case nil => simp at h_in
+    case cons el'' els =>
+      simp at h_in
+      rw [←h_in]
+      let ⟨_, h_el⟩ := h el (by simp)
+      let ⟨h_el'', _⟩ := h el'' (by simp)
+      unfold valid_adjacent_fluid_els
+      linarith
 
-theorem layout_list_acc.aux_inner_disjoint (f : AccUpdate) (dim : Fin 2) (els : List Element) (p : Pos)
-  (h_f_mono : layout_monotone f dim els) (h_disjoint : ∀ el ∈ els, el.inner_disjoint)
-  : ∀ el ∈ layout_list_acc.aux f els p, el.inner_disjoint
+lemma layoutFluid.aux_non_emp {dim : Fin 2} {els : List FluidEl} {p : Pos} {el' : Element}
+  (h : el' ∈ aux dim els p) : els ≠ [] := by
+  induction els
+  · contradiction
+  · simp
+
+-- def FluidEl.layoutFormula (el : FluidEl) (dim : Fin 2)  :=
+--   el.prevMargin.toVec dim + el.el.box.size.nthVec dim + (1 + el.nextMargin).toVec dim
+
+theorem layoutFluid.aux_monotone (dim : Fin 2) (els : List FluidEl) (p : Pos)
+  (h_valid : valid_fluid_els els)
+  : ∀ h_el' : el' ∈ aux dim els p,
+    p.nth dim + (els.head (aux_non_emp h_el')).prevMargin ≤ el'.box.lo.nth dim
+  := by
+  intro h_el'
+  induction' els using List.suffix_induction generalizing p
+  all_goals simp [aux] at h_el'
+  case cons el1 els ih h_el' =>
+  cases els
+  all_goals simp [aux] at h_el'
+  case nil =>
+    simp [h_el', Element.set_pos_changes_pos, Prod.nth_add_eq_toVec]
+  case cons el2 els h_el' =>
+    have h_valid := List.chain'_cons.mp h_valid
+    cases h_el'
+    case inl h_el' =>
+      simp [h_el', Element.set_pos_changes_pos, Prod.nth_add_eq_toVec]
+    case inr h_el' =>
+    cases h_el'
+    case inl h_el' =>
+      simp [h_el', Element.set_pos_changes_pos]
+      rw [add_assoc, add_assoc, add_assoc, add_comm, ←add_assoc, add_comm];
+      rw [Prod.nth_dist ((p + el1.prevMargin.toVec dim)) _ dim];
+      rw [←Prod.nth_add_eq_toVec]
+      rw [le_add_iff_nonneg_right (p.nth dim + el1.prevMargin)]
+
+      cases dim.two_eq_or
+      case inl h_dim =>
+        simp [h_dim, Rat.toVec, Prod.nthVec, Prod.nth]
+        rw [add_assoc]; apply Rat.add_nonneg el1.el.box.size.1.prop
+        apply Rat.add_nonneg (by trivial)
+        exact h_valid.left
+      case inr h_dim =>
+        simp [h_dim, Rat.toVec, Prod.nthVec, Prod.nth]
+        rw [add_assoc]; apply Rat.add_nonneg el1.el.box.size.2.prop
+        apply Rat.add_nonneg (by trivial)
+        exact h_valid.left
+
+    case inr h_el' =>
+      have h_suffix : els.IsStrictSuffix (el1 :: el2 :: els) := by
+        existsi [el1, el2]
+        constructor <;> simp
+
+      cases els with
+      | nil => trivial
+      | cons el3 els =>
+        -- TODO: rewrite this using layoutFormula
+        have := ih (el3 :: els) h_suffix
+          (p + el1.prevMargin.toVec dim
+            + el1.el.box.size.nthVec dim + (1 + el1.nextMargin).toVec dim + el2.prevMargin.toVec dim
+            + el2.el.box.size.nthVec dim + (1 + el2.nextMargin).toVec dim)
+          (List.Chain'.tail h_valid.right)
+          h_el'
+        apply le_trans _ this; simp
+
+        have h_el1_el2 := h_valid.left
+        have := List.chain'_cons.mp h_valid.right
+        have h_el2_el3 := this.left
+        simp [valid_adjacent_fluid_els] at h_el1_el2 h_el2_el3
+
+        -- TODO: try and abstract out this logic
+        cases dim.two_eq_or
+        case inl h_dim =>
+          simp [h_dim, Rat.toVec, Prod.nthVec, Prod.nth]
+          rw [add_assoc, add_assoc, add_assoc, add_assoc, add_assoc]
+          rw [le_add_iff_nonneg_right (p.1 + el1.prevMargin)]
+          apply Rat.add_nonneg el1.el.box.size.1.prop
+          rw [add_assoc]; apply Rat.add_nonneg (by trivial)
+          rw [←add_assoc]; apply Rat.add_nonneg h_el1_el2
+          apply Rat.add_nonneg el2.el.box.size.1.prop
+          rw [add_assoc]; apply Rat.add_nonneg (by trivial)
+          exact h_el2_el3
+        case inr h_dim =>
+          simp [h_dim, Rat.toVec, Prod.nthVec, Prod.nth]
+          rw [add_assoc, add_assoc, add_assoc, add_assoc, add_assoc]
+          rw [le_add_iff_nonneg_right (p.2 + el1.prevMargin)]
+          apply Rat.add_nonneg el1.el.box.size.2.prop
+          rw [add_assoc]; apply Rat.add_nonneg (by trivial)
+          rw [←add_assoc]; apply Rat.add_nonneg h_el1_el2
+          apply Rat.add_nonneg el2.el.box.size.2.prop
+          rw [add_assoc]; apply Rat.add_nonneg (by trivial)
+          exact h_el2_el3
+
+theorem layoutFluid.aux_disjoint (dim : Fin 2) (els : List FluidEl) (p : Pos)
+  (h_valid : valid_fluid_els els)
+  : elements_disjoint (layoutFluid.aux dim els p)
+  := by
+  induction els generalizing p
+  all_goals simp [layoutFluid.aux, elements_disjoint] at *
+  case cons el1 els ih =>
+    cases els
+    case nil => simp [aux]
+    case cons el2 els =>
+      let p' := p + el1.prevMargin.toVec dim + el1.el.box.size.nthVec dim + (1 + el1.nextMargin).toVec dim
+      have ⟨h_el1_el2, h_valid_els⟩ := List.chain'_cons.mp h_valid
+      constructor
+      case left =>
+        intro el' h_in
+        simp [Element.disjoint, Element.set_pos_changes_pos]
+        apply Box.disjoint_if_dim_disjoint _ _ dim
+        simp
+        have h_aux_mono := layoutFluid.aux_monotone dim (el2 :: els) p' (List.Chain'.tail h_valid) h_in
+        suffices _ : (p + el1.prevMargin.toVec dim + el1.el.box.size).nth dim + 1 ≤ el'.box.pos.nth dim by
+          linarith
+        apply le_trans _ h_aux_mono
+        simp [p']
+        cases dim.two_eq_or
+        case inl h =>
+          simp [Prod.nth, Prod.nthVec, Rat.toVec, Element.set_pos_changes_pos, h] at *
+          suffices _ : p.1 + el1.prevMargin + el1.el.box.size.1 + 1 ≤
+            (p.1 + el1.prevMargin + el1.el.box.size.1 + 1) + (el1.nextMargin + el2.prevMargin)
+            by linarith
+          have := @le_add_iff_nonneg_right _ _ _ _ _ (p.1 + el1.prevMargin + el1.el.box.size.1 + 1) (el1.nextMargin + el2.prevMargin)
+          exact this.mpr h_el1_el2
+        case inr h =>
+          simp [Prod.nth, Prod.nthVec, Rat.toVec, Element.set_pos_changes_pos, h] at *
+          suffices _ : p.2 + el1.prevMargin + el1.el.box.size.2 + 1 ≤
+            (p.2 + el1.prevMargin + el1.el.box.size.2 + 1) + (el1.nextMargin + el2.prevMargin)
+            by linarith
+          have := @le_add_iff_nonneg_right _ _ _ _ _ (p.2 + el1.prevMargin + el1.el.box.size.2 + 1) (el1.nextMargin + el2.prevMargin)
+          exact this.mpr h_el1_el2
+      case right =>
+        exact ih p'.1 p'.2 h_valid_els
+
+theorem layoutFluid.aux_inner_disjoint (dim : Fin 2) (els : List FluidEl) (p : Pos)
+  (h_valid : valid_fluid_els els) (h_disjoint : ∀ el ∈ els, el.el.inner_disjoint)
+  : ∀ el ∈ layoutFluid.aux dim els p, el.inner_disjoint
   := by
   induction els generalizing p
   case nil => simp [aux]
@@ -200,128 +292,122 @@ theorem layout_list_acc.aux_inner_disjoint (f : AccUpdate) (dim : Fin 2) (els : 
         apply Element.set_pos_preserves_inner_disjoint _ _ (h_disjoint el (els.mem_cons_self el))
       case right =>
         intro el' h_in
-        exact ih (f el p) h_f_mono.cons (forall_prop_of_tail h_disjoint) el' h_in
+        exact ih
+          (p + el.prevMargin.toVec dim + el.el.box.size.nthVec dim + (1 + el.nextMargin).toVec dim)
+          h_valid.tail (forall_prop_of_tail h_disjoint) el' h_in
 
-theorem layout_list_acc.disjoint (f : AccUpdate) (dim : Fin 2) (els : List Element)
-  (h_f_mono : layout_monotone f dim els) (h_disjoint : ∀ el ∈ els, el.inner_disjoint)
-  : (layout_list_acc f els).inner_disjoint
+theorem layoutFluid.disjoint (dim : Fin 2) (els : List FluidEl)
+  (h_valid : valid_fluid_els els) (h_disjoint : ∀ el ∈ els, el.el.inner_disjoint)
+  : (layoutFluid dim els).inner_disjoint
   := by
-  simp [Element.inner_disjoint, layout_list_acc]
+  simp [Element.inner_disjoint, layoutFluid]
   apply And.intro
-  case left => exact layout_list_acc.aux_disjoint f dim els 0  h_f_mono
-  case right => exact layout_list_acc.aux_inner_disjoint f  dim els 0 h_f_mono h_disjoint
+  case left => exact layoutFluid.aux_disjoint dim els 0 h_valid
+  case right => exact layoutFluid.aux_inner_disjoint dim els 0 h_valid h_disjoint
 
-theorem left_align.monotone (els : List Element) : layout_monotone left_align 0 els := by
-  simp [layout_monotone, left_align, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
-  intro el _ y
-  linarith
+def layoutFluidX.disjoint := layoutFluid.disjoint 0
+def layoutFluidY.disjoint := layoutFluid.disjoint 1
 
-def layout_left_align.disjoint (els : List Element) :=
-  layout_list_acc.disjoint left_align 0 els (left_align.monotone els)
+-- theorem layout_left_align.aux.preserves_height
+--   (els : List Element)
+--   (p : Pos)
+--   (height : ℚ⁺)
+--   (h_bounded : ∀ el ∈ els, el.box.size.h ≤ height)
+--   : ∀ el ∈ layout_list_acc.aux leftAlign els p, el.pos.y = p.y ∧ el.box.size.h ≤ height
+--   := by
+--   induction els generalizing p
+--   case nil => intro el h_in; have := height.prop; trivial
+--   case cons el els ih =>
+--     simp [
+--       layout_list_acc.aux, Element.box, Frame.box, boxCover, Box.offset,
+--       List.attach, List.attachWith, List.map_pmap,
+--       Element.set_pos_changes_pos, Element.pos
+--     ] at ih ⊢
+--     let p' := leftAlign el p
+--     have ih := ih p'.x p'.y (forall_prop_of_tail h_bounded)
+--     apply And.intro
+--     case left => simp [h_bounded]
+--     case right =>
+--       have : p.2 = p'.2 := by simp [p', leftAlign, Prod.nth_vec]
+--       rw [this]
+--       assumption
 
-theorem layout_left_align.aux.preserves_height
-  (els : List Element)
-  (p : Pos)
-  (height : ℚ⁺)
-  (h_bounded : ∀ el ∈ els, el.box.size.h ≤ height)
-  : ∀ el ∈ layout_list_acc.aux left_align els p, el.pos.y = p.y ∧ el.box.size.h ≤ height
-  := by
-  induction els generalizing p
-  case nil => intro el h_in; have := height.prop; trivial
-  case cons el els ih =>
-    simp [
-      layout_list_acc.aux, Element.box, Frame.box, boxCover, Box.offset,
-      List.attach, List.attachWith, List.map_pmap,
-      Element.set_pos_changes_pos, Element.pos
-    ] at ih ⊢
-    let p' := left_align el p
-    have ih := ih p'.x p'.y (forall_prop_of_tail h_bounded)
-    apply And.intro
-    case left => simp [h_bounded]
-    case right =>
-      have : p.2 = p'.2 := by simp [p', left_align, Prod.nth_vec]
-      rw [this]
-      assumption
+-- theorem layout_left_align.preserves_height
+--   (els : List Element)
+--   (height : ℚ⁺)
+--   (h_bounded : ∀ el ∈ els, el.box.size.h ≤ height)
+--   : ((layoutLeftAlign els).box.size.h : ℚ) ≤ height
+--   := by
+--   simp [layoutLeftAlign, fluidLayout]
+--   cases els
+--   case nil => have := height.prop; trivial
+--   case cons el' els =>
+--     simp [
+--       Element.box, Frame.box, List.attach, List.attachWith, List.map_pmap, Box.offset,
+--       Element.set_pos_changes_pos
+--     ]
+--     let els_layout := layout_list_acc.aux left_align els (left_align el' 0)
+--     have h_aux_preserves := layout_left_align.aux.preserves_height els (left_align el' 0) height (forall_prop_of_tail h_bounded)
+--     have : layout_list_acc.aux left_align els (left_align el' 0) = els_layout := rfl
+--     rw [this] at h_aux_preserves ⊢
 
-theorem foobar {a b : ℚ} (h : a ≤ b) : 0 + a ≤ b := by
-  exact add_le_of_nonpos_of_le rfl h
+--     let b : Box := { pos := 0, size := el'.box.size }
+--     let bs := (els_layout.map (·.box))
 
-theorem layout_left_align.preserves_height
-  (els : List Element)
-  (height : ℚ⁺)
-  (h_bounded : ∀ el ∈ els, el.box.size.h ≤ height)
-  : ((layout_left_align els).box.size.h : ℚ) ≤ height
-  := by
-  simp [layout_left_align, layout_list_acc]
-  cases els
-  case nil => have := height.prop; trivial
-  case cons el' els =>
-    simp [
-      Element.box, Frame.box, List.attach, List.attachWith, List.map_pmap, Box.offset,
-      Element.set_pos_changes_pos
-    ]
-    let els_layout := layout_list_acc.aux left_align els (left_align el' 0)
-    have h_aux_preserves := layout_left_align.aux.preserves_height els (left_align el' 0) height (forall_prop_of_tail h_bounded)
-    have : layout_list_acc.aux left_align els (left_align el' 0) = els_layout := rfl
-    rw [this] at h_aux_preserves ⊢
+--     have := boxCover.size_eq_extrema_diff b bs
+--     have h_extrema := (Prod.eq_iff_fst_eq_snd_eq.mp this).right
+--     simp at h_extrema
+--     rw [h_extrema]
 
-    let b : Box := { pos := 0, size := el'.box.size }
-    let bs := (els_layout.map (·.box))
+--     have h_all_upper : ∀ b2 ∈ b :: bs, b2.hi.y ≤ height := by
+--       intro b2 h_in
+--       cases h_in
+--       case head =>
+--         have := h_bounded el' (List.mem_cons_self el' els)
+--         simp [this]
+--         trivial
+--       case tail h_in =>
+--         obtain ⟨el, ⟨h_in, h_eq⟩⟩ := List.mem_map.mp h_in
+--         rw [←h_eq]
+--         have := (h_aux_preserves el h_in)
+--         simp [left_align, Prod.nth_vec, Element.pos] at this ⊢
+--         exact add_le_of_nonpos_of_le (by simp [this.left]) this.right
 
-    have := boxCover.size_eq_extrema_diff b bs
-    have h_extrema := (Prod.eq_iff_fst_eq_snd_eq.mp this).right
-    simp at h_extrema
-    rw [h_extrema]
+--     have h_all_lower : ∀ b2 ∈ b :: bs, 0 ≤ b2.pos.y := by
+--       intro b2 h_in
+--       cases h_in
+--       case head => simp
+--       case tail h_in =>
+--         obtain ⟨el, ⟨h_in, h_eq⟩⟩ := List.mem_map.mp h_in
+--         rw [←h_eq]
+--         have := (h_aux_preserves el h_in)
+--         simp [left_align, Prod.nth_vec, Element.pos] at this ⊢
+--         simp [this.left]
 
-    have h_all_upper : ∀ b2 ∈ b :: bs, b2.hi.y ≤ height := by
-      intro b2 h_in
-      cases h_in
-      case head =>
-        have := h_bounded el' (List.mem_cons_self el' els)
-        simp [this]
-        trivial
-      case tail h_in =>
-        obtain ⟨el, ⟨h_in, h_eq⟩⟩ := List.mem_map.mp h_in
-        rw [←h_eq]
-        have := (h_aux_preserves el h_in)
-        simp [left_align, Prod.nth_vec, Element.pos] at this ⊢
-        exact add_le_of_nonpos_of_le (by simp [this.left]) this.right
-
-    have h_all_lower : ∀ b2 ∈ b :: bs, 0 ≤ b2.pos.y := by
-      intro b2 h_in
-      cases h_in
-      case head => simp
-      case tail h_in =>
-        obtain ⟨el, ⟨h_in, h_eq⟩⟩ := List.mem_map.mp h_in
-        rw [←h_eq]
-        have := (h_aux_preserves el h_in)
-        simp [left_align, Prod.nth_vec, Element.pos] at this ⊢
-        simp [this.left]
-
-    have h_max_bound := boxMax.bounded b bs 1 height h_all_upper
-    have h_min_bound := boxMin.bounded b bs 1 0 h_all_lower
-    simp [Prod.nth] at h_max_bound h_min_bound
-    linarith
+--     have h_max_bound := boxMax.bounded b bs 1 height h_all_upper
+--     have h_min_bound := boxMin.bounded b bs 1 0 h_all_lower
+--     simp [Prod.nth] at h_max_bound h_min_bound
+--     linarith
 
 
-theorem vert_stack.monotone (els : List Element) : layout_monotone vert_stack 1 els := by
-  simp [layout_monotone, vert_stack, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
-  intro el _ y
-  linarith
+-- theorem vert_stack.monotone (els : List Element) : layout_monotone block_stack 1 els := by
+--   simp [layout_monotone, block_stack, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
+--   intro el _ y
+--   linarith
 
-def layout_vert_stack.disjoint (els : List Element) :=
-  layout_list_acc.disjoint vert_stack 1 els (vert_stack.monotone els)
+-- def layout_vert_stack.disjoint (els : List Element) :=
+--   layout_list_acc.disjoint block_stack 1 els (vert_stack.monotone els)
 
-theorem vert_fixed.monotone (els : List Element) (y : ℚ)
-  (h_height_bounded : ∀ el ∈ els, el.box.size.h < y)
-  : layout_monotone (vert_fixed y) 1 els := by
-  simp [layout_monotone, vert_fixed, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
-  intro el h_in y'
-  have := h_height_bounded el h_in
-  linarith
+-- theorem vert_fixed.monotone (els : List Element) (y : ℚ)
+--   (h_height_bounded : ∀ el ∈ els, el.box.size.h < y)
+--   : layout_monotone (vertFixed y) 1 els := by
+--   simp [layout_monotone, vertFixed, Prod.nth, Element.set_pos_changes_pos, Prod.nth_vec]
+--   intro el h_in y'
+--   have := h_height_bounded el h_in
+--   linarith
 
-def layout_vert_fixed.disjoint (els : List Element) (y : ℚ) (h_height_bounded : ∀ el ∈ els, el.box.size.h < y) :=
-  layout_list_acc.disjoint (vert_fixed y) 1 els (vert_fixed.monotone els y h_height_bounded)
+-- def layout_vert_fixed.disjoint (els : List Element) (y : ℚ) (h_height_bounded : ∀ el ∈ els, el.box.size.h < y) :=
+--   layout_list_acc.disjoint (vert_fixed y) 1 els (vert_fixed.monotone els y h_height_bounded)
 
 end LayoutMonotone
 
@@ -330,130 +416,134 @@ section InlineLayoutDisjoint
 
 variable (icx : InlineLayoutCtx) (is : List Inline) (i : Inline)
 
-theorem InlineLayoutCtx.collect_inline_disjoint
-  : ∀ el ∈ icx.collect_inline i, el.inner_disjoint
+theorem InlineLayoutCtx.collectInline_disjoint
+  : ∀ el ∈ icx.collectInline i, el.inner_disjoint
   := by
   intro el h_in
   induction i generalizing icx
   case text =>
-    simp [collect_inline] at h_in
+    simp [collectInline] at h_in
     rw [h_in]
     simp [Element.inner_disjoint]
   case bold is ih =>
-    simp [collect_inline, collect_inline_seq] at h_in
+    simp [collectInline, collectInlineSeq] at h_in
     obtain ⟨i, h⟩ := h_in
     exact ih i h.left {icx with bold := true} h.right
 
-theorem InlineLayoutCtx.collect_inline_height_bounded
-  : ∀ el ∈ icx.collect_inline i, el.box.size.h ≤ icx.fontSize
+theorem InlineLayoutCtx.collectInline_height_bounded
+  : ∀ el ∈ icx.collectInline i, el.box.size.h ≤ icx.fontSize
   := by
   intro el h_in
   induction i generalizing icx
   case text s =>
-    simp [collect_inline] at h_in
+    simp [collectInline] at h_in
     rw [h_in]
     simp [Element.box]
-    let shaped := icx.globalCtx.shaper icx.fontSize s
-    have : icx.globalCtx.shaper icx.fontSize s = shaped := rfl
+    let shaped := icx.gcx.shaper icx.fontSize s
+    have : icx.gcx.shaper icx.fontSize s = shaped := rfl
     rw [this]
     have := shaped.height_bounded
     apply this
   case bold is ih =>
-    simp [collect_inline, collect_inline_seq] at h_in
+    simp [collectInline, collectInlineSeq] at h_in
     obtain ⟨i, h⟩ := h_in
     exact ih i h.left {icx with bold := true} h.right
 
-theorem InlineLayoutCtx.collect_inline_seq_disjoint
-  : ∀ el ∈ icx.collect_inline_seq is, el.inner_disjoint
+theorem InlineLayoutCtx.collectInlineSeq_disjoint
+  : ∀ el ∈ icx.collectInlineSeq is, el.inner_disjoint
   := by
   intro el h_in
-  simp [collect_inline_seq] at h_in
+  simp [collectInlineSeq] at h_in
   obtain ⟨i, h⟩ := h_in
-  exact icx.collect_inline_disjoint i el h.right
+  exact icx.collectInline_disjoint i el h.right
 
-theorem InlineLayoutCtx.collect_inline_seq_height_bounded
-  : ∀ el ∈ icx.collect_inline_seq is, el.box.size.h ≤ icx.fontSize
+theorem InlineLayoutCtx.collectInlineSeq_height_bounded
+  : ∀ el ∈ icx.collectInlineSeq is, el.box.size.h ≤ icx.fontSize
   := by
   intro el h_in
-  simp [collect_inline_seq] at h_in
+  simp [collectInlineSeq] at h_in
   obtain ⟨i, h⟩ := h_in
-  exact icx.collect_inline_height_bounded i el h.right
+  exact icx.collectInline_height_bounded i el h.right
 
-theorem InlineLayoutCtx.layout_lines_disjoint
-  (h_fontSize_le_lineHeight : icx.fontSize ≤ icx.lineHeight)
-  : (icx.layout_lines is).inner_disjoint
+theorem InlineLayoutCtx.layoutLines_disjoint
+  (h_lineHeight_ge_zero : 0 ≤ icx.lineHeight)
+  : (icx.layoutLines is).inner_disjoint
   := by
-  simp [layout_lines]
-  apply layout_vert_fixed.disjoint
+  simp [layoutLines]
+  apply layoutFluidY.disjoint
   case h_disjoint =>
     intro el h_in
     simp at h_in
     obtain ⟨line, h⟩ := h_in
     rw [←h.right]
-    apply layout_left_align.disjoint
-    intro el h_in
-    apply wrap_lines_greedy.preserves_disjoint icx.blockWidth (icx.collect_inline_seq is) _ line h.left
-    assumption
-    apply icx.collect_inline_seq_disjoint
-  case h_height_bounded =>
+    apply layoutFluidX.disjoint
+    case intro.h_valid =>
+      apply valid_fluid_els.ge_zero
+      intro el h_in
+      simp at h_in; obtain ⟨el', ⟨_, h_eq⟩⟩ := h_in
+      rw [←h_eq]; simp
+    case intro.h_disjoint =>
+      intro el h_in
+      apply wrapLinesGreedy.preserves_disjoint icx.blockWidth (icx.collectInlineSeq is) _ line h.left
+      obtain ⟨el', ⟨h_in, h_eq⟩⟩ := List.mem_map.mp h_in
+      rw [←h_eq]; simp; assumption
+      apply icx.collectInlineSeq_disjoint
+  case h_valid =>
+    apply valid_fluid_els.ge_zero
     intro el h_in
     simp at h_in
-    obtain ⟨line, h⟩ := h_in
-    rw [←h.right]
-    suffices (layout_left_align line).box.size.h ≤ icx.lineHeight by
-      have h : {a b : ℚ} → a ≤ b → a < b + 1 := by intros; linarith
-      exact h this
-    apply layout_left_align.preserves_height line icx.lineHeight
-    intro el_layout h_in
-    have h_in_seq := wrap_lines_greedy.mem icx.blockWidth el_layout (icx.collect_inline_seq is) line h.left h_in
-    have := icx.collect_inline_seq_height_bounded is el_layout h_in_seq
-    exact LE.le.trans this h_fontSize_le_lineHeight
+    obtain ⟨line, ⟨_, h_eq⟩⟩ := h_in
+    rw [←h_eq]; simp
+    exact h_lineHeight_ge_zero
 
 end InlineLayoutDisjoint
 
 section GlobalLayoutDisjoint
 
-variable (gcx : GlobalLayoutCtx) (p : Para) (b : Block) (bs : List Block) (d : Document)
-  (shape : TextShaper)
-
-theorem GlobalLayoutCtx.layout_para_disjoint
+theorem GlobalLayoutCtx.layoutPara_disjoint (gcx : GlobalLayoutCtx) (p : Para)
   (h_wf : p.wf)
-  : (gcx.layout_para p).inner_disjoint
+  : (gcx.layoutPara p).inner_disjoint
   := by
-  unfold layout_para; lift_lets; intro icx
-  apply icx.layout_lines_disjoint _ h_wf
+  unfold layoutPara; lift_lets; intro icx
+  apply icx.layoutLines_disjoint _ h_wf
 
-theorem GlobalLayoutCtx.layout_block_disjoint
-  (h_wf : b.wf)
-  : (gcx.layout_block b).inner_disjoint
+theorem GlobalLayoutCtx.layoutBlock_disjoint (gcx : GlobalLayoutCtx) (bk : BlockKind)
+  (h_wf : bk.wf)
+  : (gcx.layoutBlock bk).inner_disjoint
   := by
-  cases b
-  case para =>
-    simp [Block.wf] at h_wf
-    apply gcx.layout_para_disjoint _ h_wf
+  cases bk
+  case para p => exact gcx.layoutPara_disjoint p h_wf
 
-theorem GlobalLayoutCtx.layout_block_seq_disjoint
-  (h_wf : ∀ b ∈ bs, b.wf)
-  : (gcx.layout_block_seq bs).inner_disjoint
+theorem GlobalLayoutCtx.layoutBlockSeq_disjoint (gcx : GlobalLayoutCtx) (bs : List Block)
+  (h_wf : block_seq_wf bs)
+  : (gcx.layoutBlockSeq bs).inner_disjoint
   := by
-  simp [layout_block_seq]
-  apply layout_vert_stack.disjoint
-  intro el h_in
-  simp at h_in; obtain ⟨el, h⟩ := h_in
-  rw [←h.right]
-  apply gcx.layout_block_disjoint _ (h_wf el h.left)
+  simp [layoutBlockSeq]
+  apply layoutFluidY.disjoint
+  case h_disjoint =>
+    intro el h_in
+    simp at h_in; obtain ⟨el, h⟩ := h_in
+    rw [←h.right]
+    apply gcx.layoutBlock_disjoint _ (h_wf.right el h.left)
+  case h_valid =>
+    have := h_wf.left
+    apply (List.chain'_map _).mpr
+    apply List.Chain'.imp _ h_wf.left
+    intro b1 b2 h_ge
+    simp [valid_adjacent_fluid_els]
+    exact h_ge
 
-theorem GlobalLayoutCtx.layout_document_disjoint
+theorem GlobalLayoutCtx.layoutDocument_disjoint (gcx : GlobalLayoutCtx) (d : Document)
   (h_wf : d.wf)
-  : (gcx.layout_document d).inner_disjoint
+  : (gcx.layoutDocument d).inner_disjoint
   := by
-  simp [layout_document]
-  apply gcx.layout_block_seq_disjoint _ h_wf
+  simp [layoutDocument]
+  apply gcx.layoutBlockSeq_disjoint _ h_wf
 
-theorem Document.layout_disjoint
+theorem Document.layout_disjoint (d : Document)
   (h_wf : d.wf)
   : (d.layout shape).inner_disjoint
   := by
   unfold layout; lift_lets; intro gcx
-  apply gcx.layout_document_disjoint _ h_wf
+  apply gcx.layoutDocument_disjoint _ h_wf
 end GlobalLayoutDisjoint

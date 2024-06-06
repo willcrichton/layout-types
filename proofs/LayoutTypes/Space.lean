@@ -37,6 +37,7 @@ def NonemptyInterval.disjoint_inf {α} [Lattice α] [@DecidableRel α (· ≤ ·
 structure Box where
   pos : Pos
   size : Size
+deriving Repr
 
 @[simp] instance zeroBox : Zero Box where
   zero := ⟨⟨0, 0⟩, ⟨0, 0⟩⟩

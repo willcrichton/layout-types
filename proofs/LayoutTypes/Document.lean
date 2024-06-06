@@ -11,27 +11,43 @@ import ProofWidgets.Component.HtmlDisplay
 inductive Inline where
   | text (s : String)
   | bold (inls: List Inline)
+deriving Repr
 
 structure Para where
   inls : List Inline
   fontSize : ℚ⁺
-  lineHeight : ℚ⁺
+  lineHeight : ℚ
 
 def Para.wf (p : Para) : Prop :=
-  p.fontSize ≤ p.lineHeight
+  0 ≤ p.lineHeight
 
-inductive Block where
-  | para (p : Para)
+inductive BlockKind where
+  | para : Para → BlockKind
+
+def BlockKind.wf (bk : BlockKind) : Prop :=
+  match bk with
+  | .para p => p.wf
+
+structure BlockAttrs where
+  marginTop: ℚ
+  marginBot: ℚ
+
+structure Block where
+  kind : BlockKind
+  attrs : BlockAttrs
 
 def Block.wf (b : Block) : Prop :=
-  match b with
-  | para p => p.wf
+  b.kind.wf
+
+def block_seq_wf (bs : List Block) : Prop :=
+  List.Chain' (λ b1 b2 => 0 ≤ b1.attrs.marginBot + b2.attrs.marginTop) bs ∧
+  ∀ b ∈ bs, b.wf
 
 structure Document where
   blocks : List Block
 
 def Document.wf (d : Document) : Prop :=
-  ∀ b ∈ d.blocks, b.wf
+  block_seq_wf d.blocks
 
 
 /- Target documents. -/
@@ -39,20 +55,24 @@ def Document.wf (d : Document) : Prop :=
 structure Style where
   fontSize : ℚ
   bold : Bool
+deriving Repr
 
 mutual
   inductive Text | mk
     (box : Box)
     (s : String)
     (style : Style)
+  deriving Repr
 
   inductive Frame | mk
     (origin : Pos)
     (els : List Element)
+  deriving Repr
 
   inductive Element
     | text : Text → Element
     | frame : Frame → Element
+  deriving Repr
 end
 
 
@@ -106,7 +126,7 @@ def Element.inner_disjoint (e : Element) : Prop := match e with
 
 /- Utility widget for looking at elements in the proof view. -/
 
-def Element.to_svg_parts (e : Element) : ProofWidgets.Html :=
+def Element.toSvgParts (e : Element) : ProofWidgets.Html :=
   open scoped ProofWidgets.Jsx in
   match e with
   | text t =>
@@ -126,12 +146,12 @@ def Element.to_svg_parts (e : Element) : ProofWidgets.Html :=
     </text>
   | frame f =>
     let ⟨origin, els⟩ := f;
-    let elSvgs := els.attach.map (λ el : {x // x ∈ els} => el.val.to_svg_parts) |>.toArray;
+    let elSvgs := els.attach.map (λ el : {x // x ∈ els} => el.val.toSvgParts) |>.toArray;
     let transform := s! "translate({origin.x.toFloat}, {origin.y.toFloat})";
     <g transform={transform} >{...elSvgs}</g>
 decreasing_by have := el.prop; simp_wf; decreasing_trivial
 
-def Element.to_svg (e : Element) (width height : ℚ) : ProofWidgets.Html :=
+def Element.toSvg (e : Element) (width height : ℚ) : ProofWidgets.Html :=
   open scoped ProofWidgets.Jsx in
   <svg xmlns="http://www.w3.org/2000/svg"
       version="1.1"
@@ -141,5 +161,5 @@ def Element.to_svg (e : Element) (width height : ℚ) : ProofWidgets.Html :=
         dominantBaseline: "hanging",
         fontFamily: "Inconsolata"
       }}>
-    {e.to_svg_parts}
+    {e.toSvgParts}
   </svg>
