@@ -7,15 +7,19 @@ import «LayoutTypes».Utils
 
 /- Line wrapping -/
 
+def total_width (els : List Element) : ℚ⁺ :=
+  els.map (·.box.size.w) |>.sum
+
 def wrapLinesGreedy (els : List Element) (width : ℚ⁺) : List (List Element) :=
-  let rec aux := λ (els : List Element) (cur : List Element) (x : ℚ⁺) => match els with
+  let rec aux := λ (els : List Element) (cur : List Element) => match els with
     | [] => [cur]
     | el :: els =>
       let w := el.box.size.w
+      let x := total_width cur
       let x' := x + w
-      if x' > width then cur :: (aux els [el] w)
-      else aux els (cur ++ [el]) x'
-  aux els [] 0
+      if x' > width then cur :: (aux els [el])
+      else aux els (cur ++ [el])
+  aux els []
 
 
 /- Arranging lists of boxes -/
@@ -25,15 +29,16 @@ structure FluidEl where
   prevMargin : ℚ
   nextMargin : ℚ
 
+def layoutFluidAt (dim : Fin 2) (els : List FluidEl) (pos : Pos) := match els with
+  | [] => []
+  | {el, prevMargin, nextMargin} :: els =>
+    let elPos := pos + prevMargin.toVec dim
+    let el' := el.setPos elPos
+    let nextPos := elPos + el.box.size.nthVec dim + nextMargin.toVec dim
+    el' :: layoutFluidAt dim els nextPos
+
 def layoutFluid (dim : Fin 2) (els : List FluidEl) : Element :=
-  let rec aux := λ (els : List FluidEl) (pos : Pos) => match els with
-    | [] => []
-    | {el, prevMargin, nextMargin} :: els =>
-      let elPos := pos + prevMargin.toVec dim
-      let el' := el.setPos elPos
-      let nextPos := elPos + el.box.size.nthVec dim + (1 + nextMargin).toVec dim
-      el' :: aux els nextPos
-  let els' := aux els 0
+  let els' := layoutFluidAt dim els 0
   Element.frame (Frame.mk 0 els')
 
 def layoutFluidX := layoutFluid 0
@@ -149,6 +154,7 @@ def naiveShaper (fontSize : ℚ⁺) (s : String) : ShapedText fontSize :=
   have height_bounded : fontSize ≥ box.size.h := by trivial
   { box, height_bounded }
 
+set_option linter.hashCommand false
 #html (sampleDoc.layout naiveShaper).toSvg 150 100
 
 end Examples

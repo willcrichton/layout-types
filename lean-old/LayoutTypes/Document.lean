@@ -82,13 +82,11 @@ mutual
   def Frame.box (frame : Frame) : Box :=
     let ⟨origin, els⟩ := frame
     let boxes := els.attach.map λ el : { x // x ∈ els } => Element.box el.val
-    let cover := match boxes with
-      | [] => 0
-      | b :: bs => boxCover b bs
+    let cover := boxCover 0 boxes
     cover.offset origin
   decreasing_by have := el.prop; simp_wf; decreasing_trivial
 
-  def Element.box
+  def Element.box : Element → Box
     | Element.text ⟨box, _, _⟩ => box
     | Element.frame f => f.box
 end
@@ -102,9 +100,7 @@ mutual
 
   def Frame.setPos (frame : Frame) (pos : Pos) : Frame :=
     let ⟨_, els⟩ := frame
-    let overflow := match els with
-      | [] => 0
-      | el :: els => els.map (·.pos) |>.foldl (· ⊓ ·) el.pos
+    let overflow := els.map (·.pos) |>.foldl (· ⊓ ·) 0
     ⟨pos - overflow, els⟩
 
   def Element.setPos (e : Element) (pos : Pos) : Element := match e with

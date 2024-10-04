@@ -1,8 +1,9 @@
 /- Random utilities that aren't in the stdlib or mathlib. -/
 
 import Mathlib.Data.List.Basic
-import Mathlib.Algebra.BigOperators.Basic
+import Mathlib.Algebra.BigOperators.Group.List
 import Mathlib.Data.NNRat.Defs
+import Mathlib.Algebra.Group.Prod
 
 notation "ℚ⁺" => NNRat
 
@@ -19,6 +20,10 @@ def List.fins {α} (l : List α) : List (Fin l.length) :=
 
 def List.accSum {α} [Zero α] [Add α] (l : List α) : List α :=
   l.fins.map (λ (i : Fin l.length) => (l.take i).sum)
+
+def Fin.other (n : Fin 2) : Fin 2 :=
+  if n = 0 then ⟨1, by trivial⟩
+  else ⟨0, by trivial⟩
 
 def Prod.nth {α} (p : α × α) (n : Fin 2) : α :=
   if n = 0 then p.fst
@@ -37,9 +42,6 @@ def Int.toFloat (n : ℤ) : Float :=
   | ofNat n => n.toFloat
   | negSucc n => n.toFloat * -1
 
-def Rat.toFloat (r : Rat) : Float :=
-  r.num.toFloat / r.den.toFloat
-
 instance {α} [Repr α] : ToString α where
   toString a := (reprPrec a 0).pretty 60 2
 
@@ -53,8 +55,7 @@ decreasing_by
   simp_wf
   obtain ⟨t, ⟨h1, h2⟩⟩ := _h
   rw [←h2]
-  simp
-  assumption
+  simp [h1, List.length_pos]
 
 def List.suffix_induction {α} {p : List α → Prop}
   (l : List α)

@@ -11,11 +11,11 @@ theorem List.get_fins {α} (l : List α) (i : Fin l.fins.length)
 
 theorem List.accSum_length {α} [AddCommMonoid α] (l : List α)
   : l.accSum.length = l.length
-  := by simp [List.accSum, length_fins]
+  := by simp [accSum, length_fins]
 
 theorem List.accSum_get {α} [AddCommMonoid α] {l : List α} {i : Fin l.accSum.length}
   : l.accSum.get i = (l.take i).sum
-  := by simp [List.accSum, fins]
+  := by simp [accSum, fins]
 
 def Fin.two_eq_or (n : Fin 2) : n = 0 ∨ n = 1 := by omega
 

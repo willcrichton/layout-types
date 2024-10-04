@@ -27,18 +27,18 @@ theorem Element.set_pos_changes_pos (e : Element) (pos : Pos)
       simp [List.foldl_map]
       let boxSup := (· ⊔ box ·)
       let posInf := fun x y => x ⊓ (box y).pos
-      suffices (els.foldl boxSup el.box).pos = els.foldl posInf el.box.pos by
+      suffices (els.foldl boxSup (0 ⊔ el.box)).pos = els.foldl posInf (0 ⊓ el.box.pos) by
         linear_combination this + pos
 
       induction els
-      case nil => simp
-      case cons el els ih =>
-        simp only [List.foldl_cons, List.foldl_map]
+      case nil => simp; rw [Box.sup_eq_pos_inf, Box.zero_pos_zero]
+      case cons el' els ih =>
+        simp [List.foldl_cons, List.foldl_map]
         rw [
-          List.foldl_hom (· ⊔ box el) boxSup _ _ _ (by simp [boxSup, sup_right_comm]),
-          List.foldl_hom (· ⊓ (box el).pos) posInf _ _ _ (by simp [posInf, inf_right_comm])
+          List.foldl_hom (boxSup · el') boxSup _ _ _ (by simp [boxSup, sup_right_comm]),
+          List.foldl_hom (posInf · el') posInf _ _ _ (by simp [posInf, inf_right_comm]),
+          ←ih
         ]
-        rw [←ih]
         apply Box.sup_eq_pos_inf
 
 theorem Element.set_pos_preserves_inner_disjoint (e : Element) (pos : Pos)
